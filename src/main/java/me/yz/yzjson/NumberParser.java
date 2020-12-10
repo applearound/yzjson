@@ -1,6 +1,6 @@
 package me.yz.yzjson;
 
-public class NumberUtil {
+public class NumberParser {
 
     private enum Status {
         INIT,
@@ -42,12 +42,12 @@ public class NumberUtil {
         return c == 'E' || c == 'e';
     }
 
-    public static void read(final CharSequence sequence) {
+    public static int parse(final CharSequence sequence, final int index) {
         Status currentStatus = Status.INIT;
-        int index = 0;
+        int i = index;
         char c;
-        while (index != sequence.length()) {
-            c = sequence.charAt(index++);
+        while (i != sequence.length()) {
+            c = sequence.charAt(i);
             switch (currentStatus) {
                 case INIT:
                     if (isNegative(c)) {
@@ -57,7 +57,7 @@ public class NumberUtil {
                     } else if (isPositiveInteger(c)) {
                         currentStatus = Status.INTEGER;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case ZERO_OR_POSITIVE:
@@ -66,7 +66,7 @@ public class NumberUtil {
                     } else if (isPositiveInteger(c)) {
                         currentStatus = Status.INTEGER;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case ZERO:
@@ -75,34 +75,30 @@ public class NumberUtil {
                     } else if (isExponent(c)) {
                         currentStatus = Status.EXPONENT;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case INTEGER:
-                    if (isInteger(c)) {
-                        currentStatus = Status.INTEGER;
-                    } else if (isDot(c)) {
-                        currentStatus = Status.EXPONENT;
-                    } else if (isExponent(c)) {
+                    if (isDot(c)) {
                         currentStatus = Status.FRACTION_NUMBER;
-                    } else {
-                        throw new ParseException();
+                    } else if (isExponent(c)) {
+                        currentStatus = Status.EXPONENT;
+                    } else if (!isInteger(c)) {
+                        break;
                     }
                     break;
                 case FRACTION_NUMBER:
                     if (isInteger(c)) {
                         currentStatus = Status.FRACTION_CONTINUE;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case FRACTION_CONTINUE:
-                    if (isInteger(c)) {
-                        currentStatus = Status.FRACTION_CONTINUE;
-                    } else if (isExponent(c)) {
+                    if (isExponent(c)) {
                         currentStatus = Status.EXPONENT;
-                    } else {
-                        throw new ParseException();
+                    } else if (!isInteger(c)) {
+                        break;
                     }
                     break;
                 case EXPONENT:
@@ -111,26 +107,25 @@ public class NumberUtil {
                     } else if (isInteger(c)) {
                         currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case EXPONENT_NUMBER:
                     if (isInteger(c)) {
                         currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case EXPONENT_NUMBER_CONTINUE:
-                    if (isInteger(c)) {
-                        currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
-                    } else {
-                        throw new ParseException();
+                    if (!isInteger(c)) {
+                        break;
                     }
                     break;
                 default:
                     throw new ParseException();
             }
+            ++i;
         }
         if (currentStatus != Status.ZERO &&
                 currentStatus != Status.INTEGER &&
@@ -138,5 +133,6 @@ public class NumberUtil {
                 currentStatus != Status.EXPONENT_NUMBER_CONTINUE) {
             throw new ParseException();
         }
+        return i;
     }
 }

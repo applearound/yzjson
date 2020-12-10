@@ -1,12 +1,6 @@
 package me.yz.yzjson;
 
-public class StringUtil {
-    private final String key;
-
-    public StringUtil(String key) {
-        this.key = key;
-    }
-
+public class StringParser {
     private enum Status {
         INIT,
         READ_STRING,
@@ -62,18 +56,18 @@ public class StringUtil {
         return c == 'u';
     }
 
-    public static void read(final CharSequence sequence) {
+    public static int parse(final CharSequence sequence, final int index) {
         Status currentStatus = Status.INIT;
-        int index = 0;
+        int i = index;
         char currentChar;
-        while (index != sequence.length()) {
-            currentChar = sequence.charAt(index++);
+        while (i != sequence.length()) {
+            currentChar = sequence.charAt(i);
             switch (currentStatus) {
                 case INIT:
                     if (isDoubleQuotationMark(currentChar)) {
                         currentStatus = Status.READ_STRING;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case READ_STRING:
@@ -81,10 +75,8 @@ public class StringUtil {
                         currentStatus = Status.END;
                     } else if (isReverseSolidus(currentChar)) {
                         currentStatus = Status.ESCAPE_CHARACTER;
-                    } else if (!isControl(currentChar)) {
-                        currentStatus = Status.READ_STRING;
-                    } else {
-                        throw new ParseException();
+                    } else if (isControl(currentChar)) {
+                        break;
                     }
                     break;
                 case ESCAPE_CHARACTER:
@@ -100,44 +92,46 @@ public class StringUtil {
                     } else if (isUnicode(currentChar)) {
                         currentStatus = Status.UNICODE_0;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case UNICODE_0:
                     if (isHexDigit(currentChar)) {
                         currentStatus = Status.UNICODE_1;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case UNICODE_1:
                     if (isHexDigit(currentChar)) {
                         currentStatus = Status.UNICODE_2;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case UNICODE_2:
                     if (isHexDigit(currentChar)) {
                         currentStatus = Status.UNICODE_3;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case UNICODE_3:
                     if (isHexDigit(currentChar)) {
                         currentStatus = Status.READ_STRING;
                     } else {
-                        throw new ParseException();
+                        break;
                     }
                     break;
                 case END:
                 default:
                     throw new ParseException();
             }
+            ++i;
         }
         if (currentStatus != Status.END) {
             throw new ParseException();
         }
+        return i;
     }
 }
