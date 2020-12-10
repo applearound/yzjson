@@ -7,72 +7,137 @@ public class StringUtil {
         this.key = key;
     }
 
-    private static boolean isDoubleQuoteMark(final char c) {
+    private enum Status {
+        INIT,
+        READ_STRING,
+        END,
+        ESCAPE_CHARACTER,
+        UNICODE_0,
+        UNICODE_1,
+        UNICODE_2,
+        UNICODE_3
+    }
+
+    private static boolean isDoubleQuotationMark(final char c) {
         return c == '"';
     }
 
-    private static boolean isBackSlash(final char c) {
+    private static boolean isReverseSolidus(final char c) {
         return c == '\\';
     }
 
-    public static StringUtil read(final CharSequence sequence) {
-        int currentStatus = 0;
+    private static boolean isControl(final char c) {
+        return c <= 0x001F || c == 0x007F || (0x0080 <= c && c <= 0x009F);
+    }
+
+    private static boolean isHexDigit(final char c) {
+        return ('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f');
+    }
+
+    private static boolean isSolidus(final char c) {
+        return c == '/';
+    }
+
+    private static boolean isBackSpace(final char c) {
+        return c == 'b';
+    }
+
+    private static boolean isFormfeed(final char c) {
+        return c == 'f';
+    }
+
+    private static boolean isLineFeed(final char c) {
+        return c == 'n';
+    }
+
+    private static boolean isCarriageReturn(final char c) {
+        return c == 'r';
+    }
+
+    private static boolean isHorizontalTab(final char c) {
+        return c == 't';
+    }
+
+    private static boolean isUnicode(final char c) {
+        return c == 'u';
+    }
+
+    public static void read(final CharSequence sequence) {
+        Status currentStatus = Status.INIT;
         int index = 0;
         char currentChar;
         while (index != sequence.length()) {
             currentChar = sequence.charAt(index++);
             switch (currentStatus) {
-                case 0:
-                    if (isDoubleQuoteMark(currentChar)) {
-                        currentStatus = 1;
+                case INIT:
+                    if (isDoubleQuotationMark(currentChar)) {
+                        currentStatus = Status.READ_STRING;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case 1:
-                    if (isDoubleQuoteMark(currentChar)) {
-                        currentStatus = 2;
-                    } else if (isBackSlash(currentChar)) {
-                        currentStatus = 3;
+                case READ_STRING:
+                    if (isDoubleQuotationMark(currentChar)) {
+                        currentStatus = Status.END;
+                    } else if (isReverseSolidus(currentChar)) {
+                        currentStatus = Status.ESCAPE_CHARACTER;
+                    } else if (!isControl(currentChar)) {
+                        currentStatus = Status.READ_STRING;
                     } else {
-                        currentStatus = 4;
+                        throw new ParseException();
                     }
                     break;
-                case 2:
-                    break;
-                case 3:
-
-                    break;
-                case 4:
-                    if (isDoubleQuoteMark(currentChar)) {
-                        currentStatus = 2;
-                    } else if (isBackSlash(currentChar)) {
-                        currentStatus = 3;
+                case ESCAPE_CHARACTER:
+                    if (isDoubleQuotationMark(currentChar) ||
+                            isReverseSolidus(currentChar) ||
+                            isSolidus(currentChar) ||
+                            isBackSpace(currentChar) ||
+                            isFormfeed(currentChar) ||
+                            isLineFeed(currentChar) ||
+                            isCarriageReturn(currentChar) ||
+                            isHorizontalTab(currentChar)) {
+                        currentStatus = Status.READ_STRING;
+                    } else if (isUnicode(currentChar)) {
+                        currentStatus = Status.UNICODE_0;
                     } else {
-                        currentStatus = 4;
+                        throw new ParseException();
                     }
                     break;
-                case 5:
+                case UNICODE_0:
+                    if (isHexDigit(currentChar)) {
+                        currentStatus = Status.UNICODE_1;
+                    } else {
+                        throw new ParseException();
+                    }
                     break;
-                case 6:
+                case UNICODE_1:
+                    if (isHexDigit(currentChar)) {
+                        currentStatus = Status.UNICODE_2;
+                    } else {
+                        throw new ParseException();
+                    }
                     break;
-                case 7:
+                case UNICODE_2:
+                    if (isHexDigit(currentChar)) {
+                        currentStatus = Status.UNICODE_3;
+                    } else {
+                        throw new ParseException();
+                    }
                     break;
-                case 8:
+                case UNICODE_3:
+                    if (isHexDigit(currentChar)) {
+                        currentStatus = Status.READ_STRING;
+                    } else {
+                        throw new ParseException();
+                    }
                     break;
-                case 9:
-                    break;
-                case 10:
-                    break;
-                case 11:
-                    break;
-                case 12:
-                    break;
-                case 13:
-                    break;
-                case 14:
-                    break;
+                case END:
+                default:
+                    throw new ParseException();
             }
+        }
+        if (currentStatus != Status.END) {
+            throw new ParseException();
         }
     }
 }
