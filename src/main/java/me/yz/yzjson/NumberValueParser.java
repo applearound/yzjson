@@ -1,6 +1,6 @@
 package me.yz.yzjson;
 
-public class NumberParser {
+public class NumberValueParser {
 
     private enum Status {
         INIT,
@@ -47,7 +47,7 @@ public class NumberParser {
         int i = index;
         char c;
         while (i != sequence.length()) {
-            c = sequence.charAt(i);
+            c = sequence.charAt(i++);
             switch (currentStatus) {
                 case INIT:
                     if (isNegative(c)) {
@@ -57,7 +57,7 @@ public class NumberParser {
                     } else if (isPositiveInteger(c)) {
                         currentStatus = Status.INTEGER;
                     } else {
-                        break;
+                        throw new ParseException();
                     }
                     break;
                 case ZERO_OR_POSITIVE:
@@ -66,7 +66,7 @@ public class NumberParser {
                     } else if (isPositiveInteger(c)) {
                         currentStatus = Status.INTEGER;
                     } else {
-                        break;
+                        throw new ParseException();
                     }
                     break;
                 case ZERO:
@@ -75,7 +75,7 @@ public class NumberParser {
                     } else if (isExponent(c)) {
                         currentStatus = Status.EXPONENT;
                     } else {
-                        break;
+                        return i - 1;
                     }
                     break;
                 case INTEGER:
@@ -84,21 +84,21 @@ public class NumberParser {
                     } else if (isExponent(c)) {
                         currentStatus = Status.EXPONENT;
                     } else if (!isInteger(c)) {
-                        break;
+                        return i - 1;
                     }
                     break;
                 case FRACTION_NUMBER:
                     if (isInteger(c)) {
                         currentStatus = Status.FRACTION_CONTINUE;
                     } else {
-                        break;
+                        throw new ParseException();
                     }
                     break;
                 case FRACTION_CONTINUE:
                     if (isExponent(c)) {
                         currentStatus = Status.EXPONENT;
                     } else if (!isInteger(c)) {
-                        break;
+                        return i - 1;
                     }
                     break;
                 case EXPONENT:
@@ -107,25 +107,24 @@ public class NumberParser {
                     } else if (isInteger(c)) {
                         currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
                     } else {
-                        break;
+                        throw new ParseException();
                     }
                     break;
                 case EXPONENT_NUMBER:
                     if (isInteger(c)) {
                         currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
                     } else {
-                        break;
+                        throw new ParseException();
                     }
                     break;
                 case EXPONENT_NUMBER_CONTINUE:
                     if (!isInteger(c)) {
-                        break;
+                        return i - 1;
                     }
                     break;
                 default:
                     throw new ParseException();
             }
-            ++i;
         }
         if (currentStatus != Status.ZERO &&
                 currentStatus != Status.INTEGER &&

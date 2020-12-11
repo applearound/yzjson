@@ -1,12 +1,16 @@
 package me.yz.yzjson;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class JsonParser {
 
     private enum Status {
         INIT,
-        OBJECT,
+        KEY_OR_EMPTY,
+        KEY,
         COLON,
-        COMMA,
+        COMMA_OR_END,
         VALUE,
         ARRAY,
         END;
@@ -60,7 +64,7 @@ public class JsonParser {
         return c == ' ' || c == '\t' || c == '\r' || c == '\n';
     }
 
-    public static int parseObject(final CharSequence sequence, final int index) {
+    public static int parseObject(final CharSequence sequence, final int index, final Map<String, Object> map) {
         Status currentStatus = Status.INIT;
         int i = index;
         char c;
@@ -69,20 +73,30 @@ public class JsonParser {
             switch (currentStatus) {
                 case INIT:
                     if (isLeftBrace(c)) {
-                        currentStatus = Status.OBJECT;
+                        currentStatus = Status.KEY_OR_EMPTY;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case OBJECT:
+                case KEY_OR_EMPTY:
                     if (isQuotationMark(c)) {
-                        i = StringParser.parse(sequence, i);
+                        final StringParser.PartialResult parse = StringParser.parse(sequence, i - 1);
+                        i = parse.getIndex();
+                        System.out.println("Key: " + parse.getResult());
                         currentStatus = Status.COLON;
                     } else if (isRightBrace(c)) {
                         currentStatus = Status.END;
-                    } else if (isWhitespace(c)) {
-                        i = parseWhitespace(sequence, i);
-                    } else {
+                    } else if (!isWhitespace(c)) {
+                        throw new ParseException();
+                    }
+                    break;
+                case KEY:
+                    if (isQuotationMark(c)) {
+                        final StringParser.PartialResult parse = StringParser.parse(sequence, i - 1);
+                        i = parse.getIndex();
+                        System.out.println("Key: " + parse.getResult());
+                        currentStatus = Status.COLON;
+                    } else if (!isWhitespace(c)) {
                         throw new ParseException();
                     }
                     break;
@@ -95,36 +109,42 @@ public class JsonParser {
                     break;
                 case VALUE:
                     if (isQuotationMark(c)) {
-                        i = parseStringValue(sequence, i);
-                        currentStatus = Status.COMMA;
+                        final StringParser.PartialResult parse = StringParser.parse(sequence, i - 1);
+                        i = parse.getIndex();
+                        System.out.println("Value: " + parse.getResult());
+                        currentStatus = Status.COMMA_OR_END;
                     } else if (isNumberValue(c)) {
-                        i = parseNumber(sequence, i);
-                        currentStatus = Status.COMMA;
+                        i = NumberValueParser.parse(sequence, i - 1);
+                        currentStatus = Status.COMMA_OR_END;
                     } else if (isLeftBrace(c)) {
-                        i = parseObject(sequence, i);
-                        currentStatus = Status.COMMA;
+                        i = parseObject(sequence, i - 1, new HashMap<>());
+                        currentStatus = Status.COMMA_OR_END;
                     } else if (isLeftBracket(c)) {
-                        i = parseArray(sequence, i);
-                        currentStatus = Status.COMMA;
+                        i = parseArray(sequence, i - 1);
+                        currentStatus = Status.COMMA_OR_END;
                     } else if (isTureValue(c)) {
-                        i = parseTrue(sequence, i);
-                        currentStatus = Status.COMMA;
+                        i = parseTrue(sequence, i - 1);
+                        currentStatus = Status.COMMA_OR_END;
                     } else if (isFalseValue(c)) {
-                        i = parseFalse(sequence, i);
-                        currentStatus = Status.COMMA;
+                        i = parseFalse(sequence, i - 1);
+                        currentStatus = Status.COMMA_OR_END;
                     } else if (isNullValue(c)) {
-                        i = parseNull(sequence, i);
-                        currentStatus = Status.COMMA;
-                    } else {
+                        i = parseNull(sequence, i - 1);
+                        currentStatus = Status.COMMA_OR_END;
+                    } else if (!isWhitespace(c)) {
                         throw new ParseException();
                     }
                     break;
-                case COMMA:
+                case COMMA_OR_END:
                     if (isComma(c)) {
-                        currentStatus = Status.OBJECT;
-                    } else {
+                        currentStatus = Status.KEY;
+                    } else if (isRightBrace(c)) {
+                        currentStatus = Status.END;
+                    } else if (!isWhitespace(c)) {
                         throw new ParseException();
                     }
+                    break;
+                case END:
                 default:
                     throw new ParseException();
             }
@@ -133,27 +153,146 @@ public class JsonParser {
         return i;
     }
 
-    public static int parseWhitespace(final CharSequence sequence, final int index) {
-        return WhitespaceParser.parse(sequence, index);
+    public static int parseArray(final CharSequence sequence, final int index) {
+        return 1;
     }
 
-    public static int parseStringValue(final CharSequence sequence, final int index) {
+    public static int parseTrue(final CharSequence sequence, final int index) {
+        int currentStatus = 0;
         int i = index;
         char c;
         while (i != sequence.length()) {
             c = sequence.charAt(i++);
-            if (isWhitespace(c)) {
-                i = WhitespaceParser.parse(sequence, index);
-            } else if (c == '"') {
-                i = StringParser.parse(sequence, index);
-            } else {
-                return i - 1;
+            switch (currentStatus) {
+                case 0:
+                    if (c == 't') {
+                        currentStatus = 1;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 1:
+                    if (c == 'r') {
+                        currentStatus = 2;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 2:
+                    if (c == 'u') {
+                        currentStatus = 3;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 3:
+                    if (c == 'e') {
+                        currentStatus = 4;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 4:
+                    return i - 1;
+                default:
+                    throw new ParseException();
             }
         }
         return i;
     }
 
-    public static int parseNumber(final CharSequence sequence, final int index) {
-        return NumberParser.parse(sequence, index);
+    public static int parseFalse(final CharSequence sequence, final int index) {
+        int currentStatus = 0;
+        int i = index;
+        char c;
+        while (i != sequence.length()) {
+            c = sequence.charAt(i++);
+            switch (currentStatus) {
+                case 0:
+                    if (c == 'f') {
+                        currentStatus = 1;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 1:
+                    if (c == 'a') {
+                        currentStatus = 2;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 2:
+                    if (c == 'l') {
+                        currentStatus = 3;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 3:
+                    if (c == 's') {
+                        currentStatus = 4;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 4:
+                    if (c == 'e') {
+                        currentStatus = 5;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 5:
+                    return i - 1;
+                default:
+                    throw new ParseException();
+            }
+        }
+        return i;
+    }
+
+    public static int parseNull(final CharSequence sequence, final int index) {
+        int currentStatus = 0;
+        int i = index;
+        char c;
+        while (i != sequence.length()) {
+            c = sequence.charAt(i++);
+            switch (currentStatus) {
+                case 0:
+                    if (c == 'n') {
+                        currentStatus = 1;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 1:
+                    if (c == 'u') {
+                        currentStatus = 2;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 2:
+                    if (c == 'l') {
+                        currentStatus = 3;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 3:
+                    if (c == 'l') {
+                        currentStatus = 4;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case 4:
+                    return i - 1;
+                default:
+                    throw new ParseException();
+            }
+        }
+        return i;
     }
 }
