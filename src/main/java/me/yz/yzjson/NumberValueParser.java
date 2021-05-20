@@ -1,28 +1,30 @@
 package me.yz.yzjson;
 
-public class NumberValueParser {
+import java.math.BigDecimal;
 
+public class NumberValueParser {
     private enum Status {
         INIT,
-        ZERO_OR_POSITIVE,
-        INTEGER,
-        ZERO,
+        ZERO_OR_POSITIVE_DIGIT,
+        DIGIT_FRACTION_OR_EXPONENT_OR_END,
+        FRACTION_OR_EXPONENT_OR_END,
         FRACTION_NUMBER,
-        FRACTION_CONTINUE,
-        EXPONENT,
+        FRACTION_NUMBER_OR_EXPONENT_OR_END,
+        MARK_OR_EXPONENT_NUMBER,
         EXPONENT_NUMBER,
-        EXPONENT_NUMBER_CONTINUE;
+        EXPONENT_NUMBER_OR_END,
+        END
     }
 
-    private static boolean isNegative(final char c) {
+    private static boolean isNegativeMark(final char c) {
         return c == '-';
     }
 
-    private static boolean isPositive(final char c) {
+    private static boolean isPositiveMark(final char c) {
         return c == '+';
     }
 
-    private static boolean isPositiveInteger(final char c) {
+    private static boolean isPositiveDigit(final char c) {
         return '1' <= c && c <= '9';
     }
 
@@ -30,7 +32,7 @@ public class NumberValueParser {
         return c == '0';
     }
 
-    private static boolean isInteger(final char c) {
+    private static boolean isDigit(final char c) {
         return '0' <= c && c <= '9';
     }
 
@@ -43,95 +45,109 @@ public class NumberValueParser {
     }
 
     public static int parse(final CharSequence sequence, final int index) {
-        Status currentStatus = Status.INIT;
         int i = index;
         char c;
-        while (i != sequence.length()) {
-            c = sequence.charAt(i++);
+        Status currentStatus = Status.INIT;
+        while (i != sequence.length() && currentStatus != Status.END) {
+            c = sequence.charAt(i);
             switch (currentStatus) {
                 case INIT:
-                    if (isNegative(c)) {
-                        currentStatus = Status.ZERO_OR_POSITIVE;
+                    if (isNegativeMark(c)) {
+                        currentStatus = Status.ZERO_OR_POSITIVE_DIGIT;
                     } else if (isZero(c)) {
-                        currentStatus = Status.ZERO;
-                    } else if (isPositiveInteger(c)) {
-                        currentStatus = Status.INTEGER;
+                        currentStatus = Status.FRACTION_OR_EXPONENT_OR_END;
+                    } else if (isPositiveDigit(c)) {
+                        currentStatus = Status.DIGIT_FRACTION_OR_EXPONENT_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case ZERO_OR_POSITIVE:
+                case ZERO_OR_POSITIVE_DIGIT:
                     if (isZero(c)) {
-                        currentStatus = Status.ZERO;
-                    } else if (isPositiveInteger(c)) {
-                        currentStatus = Status.INTEGER;
+                        currentStatus = Status.FRACTION_OR_EXPONENT_OR_END;
+                    } else if (isPositiveDigit(c)) {
+                        currentStatus = Status.DIGIT_FRACTION_OR_EXPONENT_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case ZERO:
+                case FRACTION_OR_EXPONENT_OR_END:
                     if (isDot(c)) {
                         currentStatus = Status.FRACTION_NUMBER;
                     } else if (isExponent(c)) {
-                        currentStatus = Status.EXPONENT;
+                        currentStatus = Status.MARK_OR_EXPONENT_NUMBER;
                     } else {
-                        return i - 1;
+                        currentStatus = Status.END;
                     }
                     break;
-                case INTEGER:
+                case DIGIT_FRACTION_OR_EXPONENT_OR_END:
                     if (isDot(c)) {
                         currentStatus = Status.FRACTION_NUMBER;
                     } else if (isExponent(c)) {
-                        currentStatus = Status.EXPONENT;
-                    } else if (!isInteger(c)) {
-                        return i - 1;
+                        currentStatus = Status.MARK_OR_EXPONENT_NUMBER;
+                    } else if (isDigit(c)) {
+                        currentStatus = Status.DIGIT_FRACTION_OR_EXPONENT_OR_END;
+                    } else {
+                        currentStatus = Status.END;
                     }
                     break;
                 case FRACTION_NUMBER:
-                    if (isInteger(c)) {
-                        currentStatus = Status.FRACTION_CONTINUE;
+                    if (isDigit(c)) {
+                        currentStatus = Status.FRACTION_NUMBER_OR_EXPONENT_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case FRACTION_CONTINUE:
+                case FRACTION_NUMBER_OR_EXPONENT_OR_END:
                     if (isExponent(c)) {
-                        currentStatus = Status.EXPONENT;
-                    } else if (!isInteger(c)) {
-                        return i - 1;
+                        currentStatus = Status.MARK_OR_EXPONENT_NUMBER;
+                    } else if (isDigit(c)) {
+                        currentStatus = Status.FRACTION_NUMBER_OR_EXPONENT_OR_END;
+                    } else {
+                        currentStatus = Status.END;
                     }
                     break;
-                case EXPONENT:
-                    if (isPositive(c) || isNegative(c)) {
+                case MARK_OR_EXPONENT_NUMBER:
+                    if (isPositiveMark(c) || isNegativeMark(c)) {
                         currentStatus = Status.EXPONENT_NUMBER;
-                    } else if (isInteger(c)) {
-                        currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
+                    } else if (isDigit(c)) {
+                        currentStatus = Status.EXPONENT_NUMBER_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
                 case EXPONENT_NUMBER:
-                    if (isInteger(c)) {
-                        currentStatus = Status.EXPONENT_NUMBER_CONTINUE;
+                    if (isDigit(c)) {
+                        currentStatus = Status.EXPONENT_NUMBER_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case EXPONENT_NUMBER_CONTINUE:
-                    if (!isInteger(c)) {
-                        return i - 1;
+                case EXPONENT_NUMBER_OR_END:
+                    if (isDigit(c)) {
+                        currentStatus = Status.EXPONENT_NUMBER_OR_END;
+                    } else {
+                        currentStatus = Status.END;
                     }
                     break;
-                default:
-                    throw new ParseException();
+                case END:
+                    break;
             }
+            i += 1;
         }
-        if (currentStatus != Status.ZERO &&
-                currentStatus != Status.INTEGER &&
-                currentStatus != Status.FRACTION_CONTINUE &&
-                currentStatus != Status.EXPONENT_NUMBER_CONTINUE) {
+        if (currentStatus != Status.FRACTION_OR_EXPONENT_OR_END &&
+                currentStatus != Status.DIGIT_FRACTION_OR_EXPONENT_OR_END &&
+                currentStatus != Status.FRACTION_NUMBER_OR_EXPONENT_OR_END &&
+                currentStatus != Status.EXPONENT_NUMBER_OR_END) {
             throw new ParseException();
         }
+        System.out.println(new BigDecimal(sequence.subSequence(index, i).toString()));
         return i;
+    }
+
+    public static void main(String[] args) {
+        String a = "23e4";
+        int i = NumberValueParser.parse(a, 0);
+        System.out.println(i);
     }
 }

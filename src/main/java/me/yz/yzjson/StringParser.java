@@ -1,54 +1,8 @@
 package me.yz.yzjson;
 
+import java.io.OutputStream;
+
 public class StringParser {
-
-    static class PartialResult {
-        private final int index;
-        private final String result;
-
-        public PartialResult(final int index, final String result) {
-            this.index = index;
-            this.result = result;
-        }
-
-        public int getIndex() {
-            return index;
-        }
-
-        public String getResult() {
-            return result;
-        }
-    }
-
-    static class UnicodeParticalResult {
-        private final int index;
-        private final char result;
-
-        public UnicodeParticalResult(final int index, final char result) {
-            this.index = index;
-            this.result = result;
-        }
-
-        public int getIndex() {
-            return index;
-        }
-
-        public char getResult() {
-            return result;
-        }
-    }
-
-    private enum Status {
-        INIT,
-        READ_STRING,
-        END,
-        ESCAPE_CHARACTER,
-        UNICODE_0,
-        UNICODE_1,
-        UNICODE_2,
-        UNICODE_3
-    }
-
     private static boolean isDoubleQuotationMark(final char c) {
         return c == '"';
     }
@@ -63,18 +17,6 @@ public class StringParser {
 
     private static boolean isHexDigit(final char c) {
         return ('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f');
-    }
-
-    private static int hexToDecimalInt(final char c) {
-        if ('0' <= c && c <= '9') {
-            return c - 48;
-        } else if ('A' <= c && c <= 'F') {
-            return c - 55;
-        } else if ('a' <= c && c <= 'f') {
-            return c - 87;
-        } else {
-            throw new IllegalArgumentException("c");
-        }
     }
 
     private static boolean isSolidus(final char c) {
@@ -105,79 +47,129 @@ public class StringParser {
         return c == 'u';
     }
 
-    private static boolean isWhitespace(final char c) {
-        return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+    private static int hexToDecimalInt(final char c) {
+        if ('0' <= c && c <= '9') {
+            return c - 48;
+        } else if ('A' <= c && c <= 'F') {
+            return c - 55;
+        } else if ('a' <= c && c <= 'f') {
+            return c - 87;
+        } else {
+            throw new IllegalArgumentException("c");
+        }
     }
 
-    public static PartialResult parse(final CharSequence sequence, final int index) {
-        final StringBuilder resultStringBuilder = new StringBuilder();
+    private enum Status {
+        INIT,
+        READ_STRING_OR_END,
+        ESCAPE,
+        UNI0,
+        UNI1,
+        UNI2,
+        UNI3,
+        END
+    }
 
-        Status currentStatus = Status.INIT;
+    public static int parse(final CharSequence sequence, final int index) {
+        final StringBuilder sb = new StringBuilder();
         int i = index;
         char c;
-        while (i != sequence.length()) {
-            c = sequence.charAt(i++);
+        Status currentStatus = Status.INIT;
+        while (i != sequence.length() && currentStatus != Status.END) {
+            c = sequence.charAt(i);
             switch (currentStatus) {
                 case INIT:
                     if (isDoubleQuotationMark(c)) {
-                        currentStatus = Status.READ_STRING;
+                        currentStatus = Status.READ_STRING_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case READ_STRING:
+                case READ_STRING_OR_END:
                     if (isDoubleQuotationMark(c)) {
                         currentStatus = Status.END;
                     } else if (isReverseSolidus(c)) {
-                        currentStatus = Status.ESCAPE_CHARACTER;
+                        currentStatus = Status.ESCAPE;
                     } else if (!isControl(c)) {
-                        resultStringBuilder.append(c);
+                        sb.append(c);
+                        currentStatus = Status.READ_STRING_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case ESCAPE_CHARACTER:
-                    if (isDoubleQuotationMark(c) ||
-                            isReverseSolidus(c) ||
-                            isSolidus(c) ||
-                            isBackSpace(c) ||
-                            isFormfeed(c) ||
-                            isLineFeed(c) ||
-                            isCarriageReturn(c) ||
-                            isHorizontalTab(c)) {
-                        currentStatus = Status.READ_STRING;
+                case ESCAPE:
+                    if (isDoubleQuotationMark(c)) {
+                        sb.append("\"");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isReverseSolidus(c)) {
+                        sb.append("\\");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isSolidus(c)) {
+                        sb.append("/");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isBackSpace(c)) {
+                        sb.append("\b");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isFormfeed(c)) {
+                        sb.append("\f");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isLineFeed(c)) {
+                        sb.append("\n");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isCarriageReturn(c)) {
+                        sb.append("\r");
+                        currentStatus = Status.READ_STRING_OR_END;
+                    } else if (isHorizontalTab(c)) {
+                        sb.append("\t");
+                        currentStatus = Status.READ_STRING_OR_END;
                     } else if (isUnicode(c)) {
-                        final UnicodeParticalResult unicodeParticalResult = parseUnicode(sequence, i);
-                        i = unicodeParticalResult.getIndex();
-                        currentStatus = Status.UNICODE_0;
+                        currentStatus = Status.UNI0;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case UNI0:
+                    if (isHexDigit(c)) {
+                        currentStatus = Status.UNI1;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case UNI1:
+                    if (isHexDigit(c)) {
+                        currentStatus = Status.UNI2;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case UNI2:
+                    if (isHexDigit(c)) {
+                        currentStatus = Status.UNI3;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case UNI3:
+                    if (isHexDigit(c)) {
+                        currentStatus = Status.READ_STRING_OR_END;
                     } else {
                         throw new ParseException();
                     }
                     break;
                 case END:
-                    return new PartialResult(i - 1, resultStringBuilder.toString());
-                default:
-                    throw new ParseException();
+                    break;
             }
+            i += 1;
         }
         if (currentStatus != Status.END) {
             throw new ParseException();
         }
-        return new PartialResult(i, resultStringBuilder.toString());
+        System.out.println(sb);
+        return i;
     }
 
-    public static UnicodeParticalResult parseUnicode(final CharSequence sequence, final int index) {
-        if (sequence.length() - index < 4) {
-            throw new ParseException();
-        } else {
-            char codepoint = 0;
-            int shift = 12;
-            for (int i = 0; i < 4; i++) {
-                final char c = sequence.charAt(index + i);
-                codepoint += c << shift;
-                shift -= 4;
-            }
-            return new UnicodeParticalResult(index + 4, codepoint);
-        }
+    public static void main(String[] args) {
+        int i = StringParser.parse("\"\\ta123\"123", 0);
+        System.out.println(i);
     }
 }

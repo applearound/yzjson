@@ -4,18 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class JsonParser {
-
-    private enum Status {
-        INIT,
-        KEY_OR_EMPTY,
-        KEY,
-        COLON,
-        COMMA_OR_END,
-        VALUE,
-        ARRAY,
-        END;
-    }
-
     private static boolean isLeftBrace(final char c) {
         return c == '{';
     }
@@ -64,6 +52,17 @@ public class JsonParser {
         return c == ' ' || c == '\t' || c == '\r' || c == '\n';
     }
 
+    private enum Status {
+        INIT,
+        KEY_OR_EMPTY,
+        KEY,
+        COLON,
+        COMMA_OR_END,
+        VALUE,
+        ARRAY,
+        END;
+    }
+
     public static int parseObject(final CharSequence sequence, final int index, final Map<String, Object> map) {
         Status currentStatus = Status.INIT;
         int i = index;
@@ -80,9 +79,7 @@ public class JsonParser {
                     break;
                 case KEY_OR_EMPTY:
                     if (isQuotationMark(c)) {
-                        final StringParser.PartialResult parse = StringParser.parse(sequence, i - 1);
-                        i = parse.getIndex();
-                        System.out.println("Key: " + parse.getResult());
+                        i = StringParser.parse(sequence, i - 1);
                         currentStatus = Status.COLON;
                     } else if (isRightBrace(c)) {
                         currentStatus = Status.END;
@@ -92,9 +89,7 @@ public class JsonParser {
                     break;
                 case KEY:
                     if (isQuotationMark(c)) {
-                        final StringParser.PartialResult parse = StringParser.parse(sequence, i - 1);
-                        i = parse.getIndex();
-                        System.out.println("Key: " + parse.getResult());
+                        i = StringParser.parse(sequence, i - 1);
                         currentStatus = Status.COLON;
                     } else if (!isWhitespace(c)) {
                         throw new ParseException();
@@ -109,9 +104,7 @@ public class JsonParser {
                     break;
                 case VALUE:
                     if (isQuotationMark(c)) {
-                        final StringParser.PartialResult parse = StringParser.parse(sequence, i - 1);
-                        i = parse.getIndex();
-                        System.out.println("Value: " + parse.getResult());
+                        i = StringParser.parse(sequence, i - 1);
                         currentStatus = Status.COMMA_OR_END;
                     } else if (isNumberValue(c)) {
                         i = NumberValueParser.parse(sequence, i - 1);
@@ -153,7 +146,58 @@ public class JsonParser {
         return i;
     }
 
+    private enum ArrayStatus {
+        INIT,
+        WHITESPACE_VALUE_OR_END,
+        COMMA_OR_END,
+    }
+
     public static int parseArray(final CharSequence sequence, final int index) {
+        ArrayStatus currentStatus = ArrayStatus.INIT;
+        int i = index;
+        char c;
+
+        while (i != sequence.length()) {
+            c = sequence.charAt(i++);
+            switch (currentStatus) {
+                case INIT:
+                    if (isLeftBracket(c)) {
+                        currentStatus = ArrayStatus.WHITESPACE_VALUE_OR_END;
+                    } else {
+                        throw new ParseException();
+                    }
+                    break;
+                case WHITESPACE_VALUE_OR_END:
+                    if (isQuotationMark(c)) {
+                        i = StringParser.parse(sequence, i - 1);
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (isNumberValue(c)) {
+                        i = NumberValueParser.parse(sequence, i - 1);
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (isLeftBrace(c)) {
+                        i = parseObject(sequence, i - 1, new HashMap<>());
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (isLeftBracket(c)) {
+                        i = parseArray(sequence, i - 1);
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (isTureValue(c)) {
+                        i = parseTrue(sequence, i - 1);
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (isFalseValue(c)) {
+                        i = parseFalse(sequence, i - 1);
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (isNullValue(c)) {
+                        i = parseNull(sequence, i - 1);
+                        currentStatus = ArrayStatus.COMMA_OR_END;
+                    } else if (!isWhitespace(c)) {
+                        throw new ParseException();
+                    }
+                    break;
+                default:
+                    throw new ParseException();
+            }
+        }
+
         return 1;
     }
 
