@@ -12,43 +12,15 @@ public class NumberValueParser {
         FRACTION_NUMBER_OR_EXPONENT_OR_END,
         MARK_OR_EXPONENT_NUMBER,
         EXPONENT_NUMBER,
-        EXPONENT_NUMBER_OR_END,
-        END
+        EXPONENT_NUMBER_OR_END
     }
 
-    private static boolean isNegativeMark(final char c) {
-        return c == '-';
-    }
-
-    private static boolean isPositiveMark(final char c) {
-        return c == '+';
-    }
-
-    private static boolean isPositiveDigit(final char c) {
-        return '1' <= c && c <= '9';
-    }
-
-    private static boolean isZero(final char c) {
-        return c == '0';
-    }
-
-    private static boolean isDigit(final char c) {
-        return '0' <= c && c <= '9';
-    }
-
-    private static boolean isDot(final char c) {
-        return c == '.';
-    }
-
-    private static boolean isExponent(final char c) {
-        return c == 'E' || c == 'e';
-    }
-
-    public static int parse(final CharSequence sequence, final int index) {
+    public static int parse(final CharSequence sequence, final int index, final ImmutableTypeHolder<BigDecimal> numberHolder) {
         int i = index;
         char c;
         Status currentStatus = Status.INIT;
-        while (i != sequence.length() && currentStatus != Status.END) {
+        out:
+        while (i != sequence.length()) {
             c = sequence.charAt(i);
             switch (currentStatus) {
                 case INIT:
@@ -77,7 +49,7 @@ public class NumberValueParser {
                     } else if (isExponent(c)) {
                         currentStatus = Status.MARK_OR_EXPONENT_NUMBER;
                     } else {
-                        currentStatus = Status.END;
+                        break out;
                     }
                     break;
                 case DIGIT_FRACTION_OR_EXPONENT_OR_END:
@@ -85,10 +57,8 @@ public class NumberValueParser {
                         currentStatus = Status.FRACTION_NUMBER;
                     } else if (isExponent(c)) {
                         currentStatus = Status.MARK_OR_EXPONENT_NUMBER;
-                    } else if (isDigit(c)) {
-                        currentStatus = Status.DIGIT_FRACTION_OR_EXPONENT_OR_END;
-                    } else {
-                        currentStatus = Status.END;
+                    } else if (!isDigit(c)) {
+                        break out;
                     }
                     break;
                 case FRACTION_NUMBER:
@@ -101,14 +71,12 @@ public class NumberValueParser {
                 case FRACTION_NUMBER_OR_EXPONENT_OR_END:
                     if (isExponent(c)) {
                         currentStatus = Status.MARK_OR_EXPONENT_NUMBER;
-                    } else if (isDigit(c)) {
-                        currentStatus = Status.FRACTION_NUMBER_OR_EXPONENT_OR_END;
-                    } else {
-                        currentStatus = Status.END;
+                    } else if (!isDigit(c)) {
+                        break out;
                     }
                     break;
                 case MARK_OR_EXPONENT_NUMBER:
-                    if (isPositiveMark(c) || isNegativeMark(c)) {
+                    if (isMark(c)) {
                         currentStatus = Status.EXPONENT_NUMBER;
                     } else if (isDigit(c)) {
                         currentStatus = Status.EXPONENT_NUMBER_OR_END;
@@ -124,30 +92,57 @@ public class NumberValueParser {
                     }
                     break;
                 case EXPONENT_NUMBER_OR_END:
-                    if (isDigit(c)) {
-                        currentStatus = Status.EXPONENT_NUMBER_OR_END;
-                    } else {
-                        currentStatus = Status.END;
+                    if (!isDigit(c)) {
+                        break out;
                     }
-                    break;
-                case END:
                     break;
             }
             i += 1;
         }
+
         if (currentStatus != Status.FRACTION_OR_EXPONENT_OR_END &&
                 currentStatus != Status.DIGIT_FRACTION_OR_EXPONENT_OR_END &&
                 currentStatus != Status.FRACTION_NUMBER_OR_EXPONENT_OR_END &&
                 currentStatus != Status.EXPONENT_NUMBER_OR_END) {
             throw new ParseException();
         }
-        System.out.println(new BigDecimal(sequence.subSequence(index, i).toString()));
+
+        if (numberHolder != null) {
+            numberHolder.setValue(new BigDecimal(sequence.subSequence(index, i).toString()));
+        }
+
         return i;
     }
 
-    public static void main(String[] args) {
-        String a = "23e4";
-        int i = NumberValueParser.parse(a, 0);
-        System.out.println(i);
+    private static boolean isNegativeMark(final char c) {
+        return c == '-';
+    }
+
+    private static boolean isPositiveMark(final char c) {
+        return c == '+';
+    }
+
+    private static boolean isMark(final char c) {
+        return isNegativeMark(c) || isPositiveMark(c);
+    }
+
+    private static boolean isPositiveDigit(final char c) {
+        return '1' <= c && c <= '9';
+    }
+
+    private static boolean isZero(final char c) {
+        return c == '0';
+    }
+
+    private static boolean isDigit(final char c) {
+        return '0' <= c && c <= '9';
+    }
+
+    private static boolean isDot(final char c) {
+        return c == '.';
+    }
+
+    private static boolean isExponent(final char c) {
+        return c == 'E' || c == 'e';
     }
 }

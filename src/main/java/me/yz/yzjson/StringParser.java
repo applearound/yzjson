@@ -1,7 +1,5 @@
 package me.yz.yzjson;
 
-import java.io.OutputStream;
-
 public class StringParser {
     private static boolean isDoubleQuotationMark(final char c) {
         return c == '"';
@@ -60,26 +58,25 @@ public class StringParser {
     }
 
     private enum Status {
-        INIT,
+        INIT_DOUBLE_QUOTATION,
         READ_STRING_OR_END,
         ESCAPE,
-        UNI0,
-        UNI1,
-        UNI2,
-        UNI3,
-        END
+        UNICODE,
+        END_DOUBLE_QUOTATION
     }
 
-    public static int parse(final CharSequence sequence, final int index) {
+    public static int parse(final CharSequence sequence, final int index, final ImmutableTypeHolder<String> strHolder) {
         final StringBuilder sb = new StringBuilder();
         int i = index;
         char c;
-        Status currentStatus = Status.INIT;
-        while (i != sequence.length() && currentStatus != Status.END) {
+        Status currentStatus = Status.INIT_DOUBLE_QUOTATION;
+        out:
+        while (i != sequence.length()) {
             c = sequence.charAt(i);
             switch (currentStatus) {
-                case INIT:
+                case INIT_DOUBLE_QUOTATION:
                     if (isDoubleQuotationMark(c)) {
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else {
                         throw new ParseException();
@@ -87,89 +84,91 @@ public class StringParser {
                     break;
                 case READ_STRING_OR_END:
                     if (isDoubleQuotationMark(c)) {
-                        currentStatus = Status.END;
+                        i += 1;
+                        currentStatus = Status.END_DOUBLE_QUOTATION;
                     } else if (isReverseSolidus(c)) {
+                        i += 1;
                         currentStatus = Status.ESCAPE;
                     } else if (!isControl(c)) {
                         sb.append(c);
-                        currentStatus = Status.READ_STRING_OR_END;
+                        i += 1;
                     } else {
                         throw new ParseException();
                     }
                     break;
                 case ESCAPE:
                     if (isDoubleQuotationMark(c)) {
-                        sb.append("\"");
+                        sb.append('"');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isReverseSolidus(c)) {
-                        sb.append("\\");
+                        sb.append('\\');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isSolidus(c)) {
-                        sb.append("/");
+                        sb.append('/');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isBackSpace(c)) {
-                        sb.append("\b");
+                        sb.append('\b');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isFormfeed(c)) {
-                        sb.append("\f");
+                        sb.append('\f');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isLineFeed(c)) {
-                        sb.append("\n");
+                        sb.append('\n');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isCarriageReturn(c)) {
-                        sb.append("\r");
+                        sb.append('\r');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isHorizontalTab(c)) {
-                        sb.append("\t");
+                        sb.append('\t');
+                        i += 1;
                         currentStatus = Status.READ_STRING_OR_END;
                     } else if (isUnicode(c)) {
-                        currentStatus = Status.UNI0;
+                        i += 1;
+                        currentStatus = Status.UNICODE;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case UNI0:
-                    if (isHexDigit(c)) {
-                        currentStatus = Status.UNI1;
-                    } else {
+                case UNICODE:
+                    if (i + 3 >= sequence.length()) {
                         throw new ParseException();
                     }
-                    break;
-                case UNI1:
-                    if (isHexDigit(c)) {
-                        currentStatus = Status.UNI2;
-                    } else {
-                        throw new ParseException();
-                    }
-                    break;
-                case UNI2:
-                    if (isHexDigit(c)) {
-                        currentStatus = Status.UNI3;
-                    } else {
-                        throw new ParseException();
-                    }
-                    break;
-                case UNI3:
-                    if (isHexDigit(c)) {
+
+                    final char uni0 = c;
+                    final char uni1 = sequence.charAt(i + 1);
+                    final char uni2 = sequence.charAt(i + 2);
+                    final char uni3 = sequence.charAt(i + 3);
+
+                    if (isHexDigit(uni0) && isHexDigit(uni1) && isHexDigit(uni2) && isHexDigit(uni3)) {
+                        sb.append((char) (
+                                hexToDecimalInt(uni3) +
+                                        (hexToDecimalInt(uni2) << 4) +
+                                        (hexToDecimalInt(uni1) << 8) +
+                                        (hexToDecimalInt(uni0) << 12)
+                        ));
                         currentStatus = Status.READ_STRING_OR_END;
+                        i += 4;
                     } else {
                         throw new ParseException();
                     }
                     break;
-                case END:
-                    break;
+                case END_DOUBLE_QUOTATION:
+                    break out;
             }
-            i += 1;
         }
-        if (currentStatus != Status.END) {
+        if (currentStatus != Status.END_DOUBLE_QUOTATION) {
             throw new ParseException();
         }
-        System.out.println(sb);
+        if (strHolder != null) {
+            strHolder.setValue(sb.toString());
+        }
         return i;
-    }
-
-    public static void main(String[] args) {
-        int i = StringParser.parse("\"\\ta123\"123", 0);
-        System.out.println(i);
     }
 }
